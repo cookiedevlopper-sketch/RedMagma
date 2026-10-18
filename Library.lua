@@ -14551,6 +14551,213 @@ function Library:CreateWindow(WindowInfo)
         return Window:Toggle(Value)
     end
 
+    --// Window Background Gradient + Moving Layer \\--
+    -- GradientColour = { {255, 0, 0}, {0, 0, 0} }   (2+ colours, evenly spaced)
+    -- MovingLayer    = {255, 255, 255}              (light that travels around the window border)
+    do
+        local GradientObject: UIGradient? = nil
+        local OriginalBackground = nil
+        local LayerStroke: UIStroke? = nil
+        local LayerGradient: UIGradient? = nil
+        local LayerConnection: RBXScriptConnection? = nil
+        local GradientConnection: RBXScriptConnection? = nil
+
+        local GradientOptions = {
+            Rotation = tonumber(WindowInfo.GradientRotation) or 45,
+            Speed = tonumber(WindowInfo.GradientSpeed) or 0,
+        }
+        local LayerOptions = {
+            Thickness = tonumber(WindowInfo.MovingLayerThickness) or 2,
+            Speed = tonumber(WindowInfo.MovingLayerSpeed) or 120,
+            Length = math.clamp(tonumber(WindowInfo.MovingLayerLength) or 0.3, 0.05, 1),
+            Transparency = tonumber(WindowInfo.MovingLayerTransparency) or 0,
+        }
+
+        -- A list of colours, a single colour, or nil
+        local function ParseColourList(Value: any): { Color3 }
+            local List = {}
+            if Value == nil then
+                return List
+            end
+
+            local Single = Library:ParseColour(Value)
+            local IsListOfColours = typeof(Value) == "table" and typeof(Value[1]) ~= "number"
+            if Single and not IsListOfColours then
+                table.insert(List, Single)
+                return List
+            end
+
+            if typeof(Value) == "table" then
+                for _, Entry in Value do
+                    local Parsed = Library:ParseColour(Entry)
+                    if Parsed then
+                        table.insert(List, Parsed)
+                    end
+                end
+            end
+            return List
+        end
+
+        local function BuildColorSequence(List: { Color3 }): ColorSequence
+            if #List == 1 then
+                return ColorSequence.new(List[1])
+            end
+
+            local Keypoints = {}
+            for Index, Color in List do
+                table.insert(Keypoints, ColorSequenceKeypoint.new((Index - 1) / (#List - 1), Color))
+            end
+            return ColorSequence.new(Keypoints)
+        end
+
+        local function IsMainVisible()
+            return MainFrame and MainFrame.Parent and MainFrame.Visible
+        end
+
+        function Window:SetGradient(Colours: any, Rotation: number?, Speed: number?)
+            if Rotation ~= nil then
+                GradientOptions.Rotation = Rotation
+            end
+            if Speed ~= nil then
+                GradientOptions.Speed = Speed
+            end
+
+            local List = ParseColourList(Colours)
+            if #List == 0 then
+                -- Remove the gradient and restore the theme background
+                if GradientConnection then
+                    GradientConnection:Disconnect()
+                    GradientConnection = nil
+                end
+                if GradientObject then
+                    GradientObject:Destroy()
+                    GradientObject = nil
+                end
+                if OriginalBackground then
+                    Library.Registry[MainFrame] = Library.Registry[MainFrame] or {}
+                    Library.Registry[MainFrame].BackgroundColor3 = OriginalBackground
+                    MainFrame.BackgroundColor3 = OriginalBackground()
+                    OriginalBackground = nil
+                end
+                return
+            end
+
+            if #List == 1 then
+                List[2] = List[1]
+            end
+
+            if not GradientObject then
+                local Registry = Library.Registry[MainFrame]
+                OriginalBackground = Registry and Registry.BackgroundColor3 or nil
+                if Registry then
+                    Registry.BackgroundColor3 = nil -- stop the theme from overwriting the white base
+                end
+                MainFrame.BackgroundColor3 = Color3.new(1, 1, 1)
+
+                GradientObject = New("UIGradient", {
+                    Name = "WindowGradient",
+                    Parent = MainFrame,
+                })
+            end
+
+            GradientObject.Color = BuildColorSequence(List)
+            GradientObject.Rotation = GradientOptions.Rotation
+
+            if GradientOptions.Speed ~= 0 and not GradientConnection then
+                GradientConnection = RunService.RenderStepped:Connect(function(DeltaTime)
+                    if GradientObject and GradientOptions.Speed ~= 0 and IsMainVisible() then
+                        GradientObject.Rotation = (GradientObject.Rotation + GradientOptions.Speed * DeltaTime) % 360
+                    end
+                end)
+                Library:GiveSignal(GradientConnection)
+            end
+        end
+
+        function Window:SetMovingLayer(Colours: any, Speed: number?, Thickness: number?, Length: number?)
+            if Speed ~= nil then
+                LayerOptions.Speed = Speed
+            end
+            if Thickness ~= nil then
+                LayerOptions.Thickness = Thickness
+            end
+            if Length ~= nil then
+                LayerOptions.Length = math.clamp(Length, 0.05, 1)
+            end
+
+            local List = ParseColourList(Colours)
+            if #List == 0 then
+                if LayerConnection then
+                    LayerConnection:Disconnect()
+                    LayerConnection = nil
+                end
+                if LayerStroke then
+                    LayerStroke:Destroy()
+                    LayerStroke = nil
+                    LayerGradient = nil
+                end
+                return
+            end
+
+            if not LayerStroke then
+                LayerStroke = Instance.new("UIStroke")
+                LayerStroke.Name = "MovingLayer"
+                LayerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                LayerStroke.Color = Color3.new(1, 1, 1)
+                LayerStroke.ZIndex = 3
+                LayerStroke.Parent = MainFrame
+
+                LayerGradient = Instance.new("UIGradient")
+                LayerGradient.Parent = LayerStroke
+            end
+
+            LayerStroke.Thickness = LayerOptions.Thickness
+
+            -- Colours inside the light band, fully transparent everywhere else
+            local Half = LayerOptions.Length / 2
+            local Start, Stop = math.max(0.5 - Half, 0.001), math.min(0.5 + Half, 0.999)
+            local BandColours = if #List == 1 then { List[1], List[1] } else List
+            local Keypoints = { ColorSequenceKeypoint.new(0, BandColours[1]) }
+            for Index, Color in BandColours do
+                table.insert(
+                    Keypoints,
+                    ColorSequenceKeypoint.new(Start + (Stop - Start) * ((Index - 1) / (#BandColours - 1)), Color)
+                )
+            end
+            table.insert(Keypoints, ColorSequenceKeypoint.new(1, BandColours[#BandColours]))
+
+            LayerGradient.Color = ColorSequence.new(Keypoints)
+            LayerGradient.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(Start, 1),
+                NumberSequenceKeypoint.new(0.5, LayerOptions.Transparency),
+                NumberSequenceKeypoint.new(Stop, 1),
+                NumberSequenceKeypoint.new(1, 1),
+            })
+
+            if not LayerConnection then
+                LayerConnection = RunService.RenderStepped:Connect(function()
+                    if LayerGradient and IsMainVisible() then
+                        LayerGradient.Rotation = (os.clock() * LayerOptions.Speed) % 360
+                    end
+                end)
+                Library:GiveSignal(LayerConnection)
+            end
+        end
+
+        local StartGradient = WindowInfo.GradientColour
+            or WindowInfo.GradienColour
+            or WindowInfo.GradientColor
+            or WindowInfo.GradientColours
+        if StartGradient ~= nil then
+            Window:SetGradient(StartGradient)
+        end
+
+        local StartLayer = WindowInfo.MovingLayer or WindowInfo.Layer
+        if StartLayer ~= nil then
+            Window:SetMovingLayer(StartLayer)
+        end
+    end
+
     --// Mini Windows \\--
     -- Window:AddMiniWindow(Idx, { Title = "...", Description = nil, Size = Vector2.new(320, 280), ... })
     -- Small floating windows opened by clicking the window logo. They can be dragged, resized,
