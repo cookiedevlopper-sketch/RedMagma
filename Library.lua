@@ -1635,6 +1635,16 @@ local function New(ClassName: string, Properties: { [string]: any }): any
     end
     FillInstance(Properties, Instance)
 
+    -- Controls drawn with the theme "Main color" (buttons, inputs, slider bars, ...) also let the window gradient through
+    if
+        Properties.BackgroundColor3 == "MainColor"
+        and (Properties.BackgroundTransparency == nil or Properties.BackgroundTransparency == 0)
+        and Library.RegisterGradientSurface
+        and (ClassName == "Frame" or ClassName == "TextButton" or ClassName == "TextBox" or ClassName == "ScrollingFrame")
+    then
+        Library:RegisterGradientSurface(Instance, 0.6)
+    end
+
     if Properties["Parent"] and not Properties["ZIndex"] then
         pcall(function()
             Instance.ZIndex = Properties.Parent.ZIndex
@@ -2649,22 +2659,23 @@ local TransparencyCache = {}
 Library.GradientSurfaces = setmetatable({}, { __mode = "k" })
 Library.GradientSurfaceTransparency = nil
 
-function Library:RegisterGradientSurface(Frame: GuiObject)
+-- Factor: 1 = same transparency as the panels, lower = more solid (used for MainColor controls)
+function Library:RegisterGradientSurface(Frame: GuiObject, Factor: number?)
     if not Frame then
         return
     end
-    Library.GradientSurfaces[Frame] = true
+    Library.GradientSurfaces[Frame] = Factor or 1
     if Library.GradientSurfaceTransparency then
-        Frame.BackgroundTransparency = Library.GradientSurfaceTransparency
+        Frame.BackgroundTransparency = Library.GradientSurfaceTransparency * (Factor or 1)
     end
 end
 
 function Library:SetGradientSurfaceTransparency(Value: number?)
     Library.GradientSurfaceTransparency = Value
     table.clear(TransparencyCache)
-    for Frame in Library.GradientSurfaces do
+    for Frame, Factor in Library.GradientSurfaces do
         if Frame.Parent then
-            Frame.BackgroundTransparency = Value or 0
+            Frame.BackgroundTransparency = (Value or 0) * Factor
         end
     end
 end
