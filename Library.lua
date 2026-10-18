@@ -2644,6 +2644,30 @@ end
 
 --// Animations \\--
 local TransparencyCache = {}
+
+--// Gradient surfaces: panels that become see-through when the window background gradient is on \\--
+Library.GradientSurfaces = setmetatable({}, { __mode = "k" })
+Library.GradientSurfaceTransparency = nil
+
+function Library:RegisterGradientSurface(Frame: GuiObject)
+    if not Frame then
+        return
+    end
+    Library.GradientSurfaces[Frame] = true
+    if Library.GradientSurfaceTransparency then
+        Frame.BackgroundTransparency = Library.GradientSurfaceTransparency
+    end
+end
+
+function Library:SetGradientSurfaceTransparency(Value: number?)
+    Library.GradientSurfaceTransparency = Value
+    table.clear(TransparencyCache)
+    for Frame in Library.GradientSurfaces do
+        if Frame.Parent then
+            Frame.BackgroundTransparency = Value or 0
+        end
+    end
+end
 local ActiveTabTweens = setmetatable({}, { __mode = "k" })
 
 function Library:PlayTabAnimation(Tab, Showing: boolean, OnComplete: (() -> ())?)
@@ -6383,7 +6407,7 @@ do
     --// Adds a checkbox / toggle that applies a gradient to the whole UI.
     -- Groupbox:SetBackgroundGradient("Gradient1", {
     --     Title = "Background gradient", ItIs = "checkbox", -- or "toggle"
-    --     Colours = { {255, 0, 0}, {0, 0, 0} }, Rotation = 45, Transparency = 0.7,
+    --     Colours = { {255, 0, 0}, {0, 0, 0} }, Rotation = 45, Transparency = 0.6, -- panel transparency
     --     Default = false, Slider = true, -- Slider adds a strength slider
     -- })
     function Funcs:SetBackgroundGradient(Idx, Info)
@@ -6398,7 +6422,7 @@ do
         local Kind = string.lower(tostring(Info.ItIs or Info.Type or "checkbox"))
         local Colours = Info.Colours or Info.Colour or Info.GradientColour
         local Rotation = Info.Rotation
-        local Transparency = tonumber(Info.Transparency) or 0.7
+        local Transparency = tonumber(Info.Transparency) or 0.6
 
         local Element
         local ElementInfo = {
@@ -6425,13 +6449,13 @@ do
         if Info.Slider then
             self:AddSlider(tostring(Idx) .. "_Strength", {
                 Text = Info.SliderText or "Gradient strength",
-                Default = math.floor((1 - Transparency) * 100),
+                Default = math.floor(Transparency * 100),
                 Min = 5,
-                Max = 100,
+                Max = 95,
                 Rounding = 0,
                 Suffix = "%",
                 Callback = function(Value)
-                    Transparency = 1 - Value / 100
+                    Transparency = Value / 100
                     local Window = Library.Window
                     if Window and Window.SetFullGradient and Element and Element.Value then
                         Window:SetFullGradient(true, Colours, Rotation, Transparency)
@@ -11809,6 +11833,7 @@ function Library:CreateWindow(WindowInfo)
             ZIndex = 3,
             Parent = BottomClip,
         })
+        Library:RegisterGradientSurface(BottomBackground)
         Library:MakeLine(MainFrame, {
             AnchorPoint = Vector2.new(0, 1),
             Position = UDim2.new(0, 0, 1, -20),
@@ -11883,6 +11908,7 @@ function Library:CreateWindow(WindowInfo)
             Size = UDim2.new(0, InitialLeftWidth, 1, -70),
             Parent = MainFrame,
         })
+        Library:RegisterGradientSurface(Tabs)
         New("UIListLayout", {
             Padding = UDim.new(0, TabButtonsStyle.Gap),
             Parent = Tabs,
@@ -11907,6 +11933,7 @@ function Library:CreateWindow(WindowInfo)
             Size = UDim2.new(1, -InitialLeftWidth - 1, 1, -70),
             Parent = MainFrame,
         })
+        Library:RegisterGradientSurface(Container)
         New("UIPadding", {
             PaddingBottom = UDim.new(0, 0),
             PaddingLeft = UDim.new(0, 6),
@@ -12652,6 +12679,7 @@ function Library:CreateWindow(WindowInfo)
                     Size = UDim2.fromScale(1, 0),
                     Parent = BoxHolder,
                 })
+                Library:RegisterGradientSurface(TabboxHolder)
                 table.insert(
                     Library.Corners,
                     New("UICorner", {
@@ -13050,6 +13078,7 @@ function Library:CreateWindow(WindowInfo)
                     Size = UDim2.fromScale(1, 0),
                     Parent = BoxHolder,
                 })
+                Library:RegisterGradientSurface(GroupboxHolder)
                 table.insert(
                     Library.Corners,
                     New("UICorner", {
@@ -14825,60 +14854,39 @@ function Library:CreateWindow(WindowInfo)
             end
         end
 
-        --// Full UI gradient: tints the whole window (sidebar, groupboxes, ...), even with a custom background
-        local FullOverlay: Frame? = nil
-        local FullOverlayGradient: UIGradient? = nil
+        --// Full UI gradient: the gradient becomes the real window background (sidebar, groupboxes, footer become see-through)
         local FullOptions = {
             Colours = nil :: any,
             Rotation = GradientOptions.Rotation,
-            Transparency = 0.7,
+            Transparency = 0.6,
             Enabled = false,
         }
 
+        local function GetBaseGradient()
+            return WindowInfo.GradientColour or WindowInfo.GradienColour or WindowInfo.GradientColor or WindowInfo.GradientColours
+        end
+
         local function RefreshFullGradient()
             if not FullOptions.Enabled then
-                if FullOverlay then
-                    FullOverlay.Visible = false
-                end
+                Library:SetGradientSurfaceTransparency(nil)
+                -- Back to the gradient given to CreateWindow (or none)
+                Window:SetGradient(GetBaseGradient())
                 return
-            end
-
-            if not FullOverlay then
-                FullOverlay = New("Frame", {
-                    Name = "FullGradientOverlay",
-                    Active = false,
-                    BackgroundColor3 = Color3.new(1, 1, 1),
-                    Size = UDim2.fromScale(1, 1),
-                    ZIndex = 40,
-                    Parent = MainFrame,
-                })
-                table.insert(
-                    Library.Corners,
-                    New("UICorner", {
-                        CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
-                        Parent = FullOverlay,
-                    })
-                )
-                FullOverlayGradient = New("UIGradient", { Parent = FullOverlay })
             end
 
             local List = ParseColourList(FullOptions.Colours)
             if #List == 0 then
-                List = ParseColourList(WindowInfo.GradientColour or WindowInfo.GradienColour or WindowInfo.GradientColor)
+                List = ParseColourList(GetBaseGradient())
             end
             if #List == 0 then
                 List = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 0, 0) }
             end
-            if #List == 1 then
-                List[2] = List[1]
-            end
 
-            FullOverlay.Visible = true
-            FullOverlay.BackgroundTransparency = FullOptions.Transparency
-            FullOverlayGradient.Color = BuildColorSequence(List)
-            FullOverlayGradient.Rotation = FullOptions.Rotation
+            Window:SetGradient(List, FullOptions.Rotation)
+            Library:SetGradientSurfaceTransparency(FullOptions.Transparency)
         end
 
+        -- Transparency = how see-through the panels are (0 = solid panels, 0.95 = almost only the gradient)
         function Window:SetFullGradient(Enabled: boolean, Colours: any?, Rotation: number?, Transparency: number?)
             FullOptions.Enabled = not not Enabled
             if Colours ~= nil then
@@ -14888,7 +14896,7 @@ function Library:CreateWindow(WindowInfo)
                 FullOptions.Rotation = Rotation
             end
             if Transparency ~= nil then
-                FullOptions.Transparency = math.clamp(Transparency, 0, 1)
+                FullOptions.Transparency = math.clamp(Transparency, 0, 0.95)
             end
             RefreshFullGradient()
         end
