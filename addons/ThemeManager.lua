@@ -297,7 +297,7 @@ function ThemeManager:ReloadCustomThemes()
 
         local Position = RawFileName:gsub("\\", "/"):find("/[^/]*$")
         local FileName = Position and RawFileName:sub(Position + 1) or RawFileName
-        if not FileName or FileName == "default" then continue end
+        if not FileName or FileName == "default" or FileName == "_autosave" then continue end
 
         table.insert(FileNames, FileName)
     end
@@ -769,6 +769,65 @@ local function ShowDialog(
     })
 end
 
+--// Autosave: the current colours are saved automatically (no need to press "Set as default")
+local AutosaveLoading = false
+local AutosaveToken = 0
+
+local function GetAutosavePath(): false | string
+    local CurrentThemesPath = GetCurrentThemesPath()
+    return if CurrentThemesPath == false then false else string.format("%s/_autosave.json", CurrentThemesPath)
+end
+
+function ThemeManager:Autosave()
+    if AutosaveLoading then
+        return
+    end
+
+    local AutosavePath = GetAutosavePath()
+    if AutosavePath == false then
+        return
+    end
+
+    --// Debounce: wait until the colour picker stops moving
+    AutosaveToken += 1
+    local Token = AutosaveToken
+    task.delay(0.6, function()
+        if Token ~= AutosaveToken then
+            return
+        end
+
+        local EncodedData, Success = ThemeManager:SaveJSON()
+        if not Success then
+            return
+        end
+
+        ThemeManager:CheckFolderTree()
+        pcall(writefile, AutosavePath, EncodedData)
+    end)
+end
+
+function ThemeManager:LoadAutosave(): boolean
+    local AutosavePath = GetAutosavePath()
+    if AutosavePath == false or not isfile(AutosavePath) then
+        return false
+    end
+
+    local SuccessRead, Content = pcall(readfile, AutosavePath)
+    if not (SuccessRead and typeof(Content) == "string") then
+        return false
+    end
+
+    local SuccessDecode, Decoded = pcall(HttpService.JSONDecode, HttpService, Content)
+    if not SuccessDecode or not IsValidThemeData(Decoded) then
+        return false
+    end
+
+    AutosaveLoading = true
+    local Success = ThemeManager:ApplyThemeData(Decoded)
+    AutosaveLoading = false
+    return Success
+end
+
 function ThemeManager:CreateThemeManager(Themesbox: any)
     assert(ThemeManager.Library, "Library is not set, call ThemeManager:SetLibrary(Library) first.")
 
@@ -1131,6 +1190,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
 
     local function UpdateTheme()
         ThemeManager:ThemeUpdate()
+        ThemeManager:Autosave()
     end
 
     BackgroundColor:OnChanged(UpdateTheme)
@@ -1138,11 +1198,16 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     AccentColor:OnChanged(UpdateTheme)
     OutlineColor:OnChanged(UpdateTheme)
     FontColor:OnChanged(UpdateTheme)
-    FontFace:OnChanged(function(Value) ThemeManager.Library:SetFont(Enum.Font[Value]) end)
-    BackgroundImage:OnChanged(function(Value) ThemeManager.Library:SetBackgroundImage(Value) end)
+    FontFace:OnChanged(function(Value) ThemeManager.Library:SetFont(Enum.Font[Value]); ThemeManager:Autosave() end)
+    BackgroundImage:OnChanged(function(Value) ThemeManager.Library:SetBackgroundImage(Value); ThemeManager:Autosave() end)
 
-    --// Load default
-    ThemeManager:LoadDefault()
+    --// Load default (if a default theme is set it wins, otherwise the last colours you used)
+    local _DefaultName, HasDefaultTheme = ThemeManager:GetDefaultTheme()
+    if HasDefaultTheme then
+        ThemeManager:LoadDefault()
+    else
+        ThemeManager:LoadAutosave()
+    end
     ThemeManager:UpdateContrastWarning()
     ThemeManager.AppliedToTab = true
     RefreshDefaultThemeLabel()
