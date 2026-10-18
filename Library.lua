@@ -6380,6 +6380,78 @@ local BaseGroupbox = {}
 do
     local Funcs = {}
 
+    --// Adds a checkbox / toggle that applies a gradient to the whole UI.
+    -- Groupbox:SetBackgroundGradient("Gradient1", {
+    --     Title = "Background gradient", ItIs = "checkbox", -- or "toggle"
+    --     Colours = { {255, 0, 0}, {0, 0, 0} }, Rotation = 45, Transparency = 0.7,
+    --     Default = false, Slider = true, -- Slider adds a strength slider
+    -- })
+    function Funcs:SetBackgroundGradient(Idx, Info)
+        if self.Destroyed then return nil end
+
+        if typeof(Idx) == "table" and Info == nil then
+            Info, Idx = Idx, nil
+        end
+        Info = typeof(Info) == "table" and Info or {}
+        Idx = Idx or "BackgroundGradient"
+
+        local Kind = string.lower(tostring(Info.ItIs or Info.Type or "checkbox"))
+        local Colours = Info.Colours or Info.Colour or Info.GradientColour
+        local Rotation = Info.Rotation
+        local Transparency = tonumber(Info.Transparency) or 0.7
+
+        local Element
+        local ElementInfo = {
+            Text = Info.Title or Info.Text or "Background gradient",
+            Default = Info.Default or false,
+            Tooltip = Info.Tooltip,
+            Callback = function(Value)
+                local Window = Library.Window
+                if Window and Window.SetFullGradient then
+                    Window:SetFullGradient(Value, Colours, Rotation, Transparency)
+                end
+                if Info.Callback then
+                    Info.Callback(Value)
+                end
+            end,
+        }
+
+        if Kind == "toggle" then
+            Element = self:AddToggle(Idx, ElementInfo)
+        else
+            Element = self:AddCheckbox(Idx, ElementInfo)
+        end
+
+        if Info.Slider then
+            self:AddSlider(tostring(Idx) .. "_Strength", {
+                Text = Info.SliderText or "Gradient strength",
+                Default = math.floor((1 - Transparency) * 100),
+                Min = 5,
+                Max = 100,
+                Rounding = 0,
+                Suffix = "%",
+                Callback = function(Value)
+                    Transparency = 1 - Value / 100
+                    local Window = Library.Window
+                    if Window and Window.SetFullGradient and Element and Element.Value then
+                        Window:SetFullGradient(true, Colours, Rotation, Transparency)
+                    end
+                end,
+            })
+        end
+
+        if Info.Default then
+            task.defer(function()
+                local Window = Library.Window
+                if Window and Window.SetFullGradient then
+                    Window:SetFullGradient(true, Colours, Rotation, Transparency)
+                end
+            end)
+        end
+
+        return Element
+    end
+
     function Funcs:AddDivider(...)
         if self.Destroyed then return nil end
 
@@ -13362,6 +13434,15 @@ function Library:CreateWindow(WindowInfo)
             return Tab:AddGroupbox({ Side = 2, Name = Name, IconName = IconName, Visible = Visible, Collapsed = Collapsed, DisableCollapsing = DisableCollapsing })
         end
 
+        -- Tab:SetBackgroundGradient("Gradient1", { Title = "Background gradient", ... }) creates a small groupbox with the checkbox
+        function Tab:SetBackgroundGradient(Idx, Info)
+            local GroupName = typeof(Info) == "table" and Info.GroupboxName or "Background"
+            local Side = typeof(Info) == "table" and Info.Side or 1
+            local Group = Tab:AddGroupbox({ Side = Side, Name = GroupName, IconName = "palette" })
+            Group:SetBackgroundGradient(Idx, Info)
+            return Group
+        end
+
         function Tab:Hover(Hovering)
             if Library.ActiveTab == Tab then
                 return
@@ -14742,6 +14823,74 @@ function Library:CreateWindow(WindowInfo)
                 end)
                 Library:GiveSignal(LayerConnection)
             end
+        end
+
+        --// Full UI gradient: tints the whole window (sidebar, groupboxes, ...), even with a custom background
+        local FullOverlay: Frame? = nil
+        local FullOverlayGradient: UIGradient? = nil
+        local FullOptions = {
+            Colours = nil :: any,
+            Rotation = GradientOptions.Rotation,
+            Transparency = 0.7,
+            Enabled = false,
+        }
+
+        local function RefreshFullGradient()
+            if not FullOptions.Enabled then
+                if FullOverlay then
+                    FullOverlay.Visible = false
+                end
+                return
+            end
+
+            if not FullOverlay then
+                FullOverlay = New("Frame", {
+                    Name = "FullGradientOverlay",
+                    Active = false,
+                    BackgroundColor3 = Color3.new(1, 1, 1),
+                    Size = UDim2.fromScale(1, 1),
+                    ZIndex = 40,
+                    Parent = MainFrame,
+                })
+                table.insert(
+                    Library.Corners,
+                    New("UICorner", {
+                        CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                        Parent = FullOverlay,
+                    })
+                )
+                FullOverlayGradient = New("UIGradient", { Parent = FullOverlay })
+            end
+
+            local List = ParseColourList(FullOptions.Colours)
+            if #List == 0 then
+                List = ParseColourList(WindowInfo.GradientColour or WindowInfo.GradienColour or WindowInfo.GradientColor)
+            end
+            if #List == 0 then
+                List = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 0, 0) }
+            end
+            if #List == 1 then
+                List[2] = List[1]
+            end
+
+            FullOverlay.Visible = true
+            FullOverlay.BackgroundTransparency = FullOptions.Transparency
+            FullOverlayGradient.Color = BuildColorSequence(List)
+            FullOverlayGradient.Rotation = FullOptions.Rotation
+        end
+
+        function Window:SetFullGradient(Enabled: boolean, Colours: any?, Rotation: number?, Transparency: number?)
+            FullOptions.Enabled = not not Enabled
+            if Colours ~= nil then
+                FullOptions.Colours = Colours
+            end
+            if Rotation ~= nil then
+                FullOptions.Rotation = Rotation
+            end
+            if Transparency ~= nil then
+                FullOptions.Transparency = math.clamp(Transparency, 0, 1)
+            end
+            RefreshFullGradient()
         end
 
         local StartGradient = WindowInfo.GradientColour
