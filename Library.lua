@@ -1644,6 +1644,62 @@ local function New(ClassName: string, Properties: { [string]: any }): any
     return Instance
 end
 
+--// Element text colour (Colour = Color3 / {r,g,b} / "r,g,b" / Vector3) \\--
+function Library:ParseColour(Value: any): Color3?
+    local ValueType = typeof(Value)
+    if ValueType == "Color3" then
+        return Value
+    elseif ValueType == "BrickColor" then
+        return Value.Color
+    elseif ValueType == "Vector3" then
+        return Color3.fromRGB(Value.X, Value.Y, Value.Z)
+    elseif ValueType == "table" then
+        local R, G, B = Value[1] or Value.R or Value.r, Value[2] or Value.G or Value.g, Value[3] or Value.B or Value.b
+        if tonumber(R) and tonumber(G) and tonumber(B) then
+            if R <= 1 and G <= 1 and B <= 1 and (R % 1 ~= 0 or G % 1 ~= 0 or B % 1 ~= 0) then
+                return Color3.new(R, G, B)
+            end
+            return Color3.fromRGB(R, G, B)
+        end
+    elseif ValueType == "string" then
+        local Numbers = {}
+        for Number in string.gmatch(Value, "%d+%.?%d*") do
+            table.insert(Numbers, tonumber(Number))
+        end
+        if #Numbers >= 3 then
+            return Color3.fromRGB(Numbers[1], Numbers[2], Numbers[3])
+        end
+    end
+    return nil
+end
+
+function Library:ApplyElementColour(Element: any, TextLabel: any, Colour: any)
+    if not Element or not TextLabel then
+        return
+    end
+
+    local Parsed = Library:ParseColour(Colour)
+    Element.Colour = Parsed
+
+    local Registry = Library.Registry[TextLabel]
+    if Parsed then
+        if Registry then
+            Registry.TextColor3 = nil
+        end
+        TextLabel.TextColor3 = Parsed
+    else
+        TextLabel.TextColor3 = Library.Scheme.FontColor
+        if Registry then
+            Registry.TextColor3 = "FontColor"
+        end
+    end
+
+    Element.ColourLabel = TextLabel
+    function Element:SetColour(NewColour: any)
+        Library:ApplyElementColour(Element, TextLabel, NewColour)
+    end
+end
+
 function Library:ApplyLucideIcon(ImageGui: any, Icon: any, Rotation: number?)
     if not ImageGui or not Icon then
         return
@@ -6466,6 +6522,7 @@ do
             Data.Text = Params.Text or ""
             Data.DoesWrap = Params.DoesWrap or false
             Data.Size = Params.Size or 14
+            Data.Colour = Params.Colour or Params.Color
             Data.Visible = if typeof(Params.Visible) == "boolean" then Params.Visible else true
             Data.Idx = typeof(Second) == "table" and First or nil
         else
@@ -6559,6 +6616,9 @@ do
 
         Label.TextLabel = TextLabel
         Label.Container = Container
+        if Data.Colour ~= nil then
+            Library:ApplyElementColour(Label, TextLabel, Data.Colour)
+        end
         if not Data.DoesWrap then
             setmetatable(Label, BaseAddons)
         end
@@ -6631,6 +6691,7 @@ do
                 Info.Func = Params.Func or Params.Callback or function() end
                 Info.DoubleClick = Params.DoubleClick
                 Info.Icon = Params.Icon or Params.IconName
+                Info.Colour = Params.Colour or Params.Color
 
                 Info.Tooltip = Params.Tooltip
                 Info.DisabledTooltip = Params.DisabledTooltip
@@ -6797,6 +6858,10 @@ do
                 Library.Registry[Button.Label].TextColor3 = "RedColor"
             end
 
+            if Info.Colour ~= nil then
+                Library:ApplyElementColour(Button, Button.Label, Info.Colour)
+            end
+
             ApplyButtonIcon(Button, Button.Icon)
 
             return Base, Stroke
@@ -6857,8 +6922,13 @@ do
                     local Clicked = WaitForEvent(Button.Base.MouseButton1Click, 0.5)
 
                     Button.Label.Text = Button.Text
-                    Button.Label.TextColor3 = Button.Risky and Library.Scheme.RedColor or Library.Scheme.FontColor
-                    Library.Registry[Button.Label].TextColor3 = Button.Risky and "RedColor" or "FontColor"
+                    if Button.Colour then
+                        Button.Label.TextColor3 = Button.Colour
+                        Library.Registry[Button.Label].TextColor3 = nil
+                    else
+                        Button.Label.TextColor3 = Button.Risky and Library.Scheme.RedColor or Library.Scheme.FontColor
+                        Library.Registry[Button.Label].TextColor3 = Button.Risky and "RedColor" or "FontColor"
+                    end
 
                     if Button.IconImage then
                         Button.IconImage.Visible = IconWasVisible
@@ -7328,6 +7398,10 @@ do
             Library.Registry[Label].TextColor3 = "RedColor"
         end
 
+        if Info.Colour ~= nil or Info.Color ~= nil then
+            Library:ApplyElementColour(Toggle, Label, Info.Colour or Info.Color)
+        end
+
         Toggle:Display()
         Groupbox:Resize()
 
@@ -7602,6 +7676,10 @@ do
             Library.Registry[Label].TextColor3 = "RedColor"
         end
 
+        if Info.Colour ~= nil or Info.Color ~= nil then
+            Library:ApplyElementColour(Toggle, Label, Info.Colour or Info.Color)
+        end
+
         Toggle:Display()
         Groupbox:Resize()
 
@@ -7710,6 +7788,9 @@ do
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = Holder,
         })
+        if Info.Colour ~= nil or Info.Color ~= nil then
+            Library:ApplyElementColour(Input, Label, Info.Colour or Info.Color)
+        end
 
         local Box = New("TextBox", {
             AnchorPoint = Vector2.new(0, 1),
@@ -7967,6 +8048,9 @@ do
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Holder,
             })
+            if Info.Colour ~= nil or Info.Color ~= nil then
+                Library:ApplyElementColour(Slider, SliderLabel, Info.Colour or Info.Color)
+            end
         end
 
         local Bar = New("TextButton", {
@@ -8426,6 +8510,9 @@ do
             ZIndex = 3,
             Parent = Holder,
         })
+        if Info.Colour ~= nil or Info.Color ~= nil then
+            Library:ApplyElementColour(Dropdown, Label, Info.Colour or Info.Color)
+        end
 
         local DisplayContainer = New("TextButton", {
             AnchorPoint = Vector2.new(0, 1),
