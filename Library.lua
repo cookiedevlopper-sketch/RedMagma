@@ -14464,6 +14464,390 @@ function Library:CreateWindow(WindowInfo)
         return Window:Toggle(Value)
     end
 
+    --// Mini Windows \\--
+    -- Window:AddMiniWindow(Idx, { Title = "...", Description = nil, Size = Vector2.new(320, 280), ... })
+    -- Small floating windows opened by clicking the window logo. They can be dragged, resized,
+    -- and they accept every groupbox element (AddLabel, AddToggle, AddCheckbox, AddButton, AddSlider, ...).
+    Window.MiniWindows = {}
+    Library.MiniWindows = Window.MiniWindows
+
+    local MiniWindowLogoButton
+
+    local function ToUDim2(Value, Default)
+        if typeof(Value) == "UDim2" then
+            return Value
+        elseif typeof(Value) == "Vector2" then
+            return UDim2.fromOffset(Value.X, Value.Y)
+        end
+        return Default
+    end
+
+    local function SetupMiniWindowLogo()
+        if MiniWindowLogoButton or not WindowIcon then
+            return
+        end
+
+        -- invisible button on top of the window logo
+        MiniWindowLogoButton = New("TextButton", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1),
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 50,
+            Parent = WindowIcon,
+        })
+
+        MiniWindowLogoButton.MouseButton1Click:Connect(function()
+            local Targets = {}
+            local AnyOpen = false
+            for _, Mini in Window.MiniWindows do
+                if Mini.OpenOnLogo and not Mini.Destroyed then
+                    table.insert(Targets, Mini)
+                    if Mini.Open then
+                        AnyOpen = true
+                    end
+                end
+            end
+
+            for _, Mini in Targets do
+                Mini:SetOpen(not AnyOpen)
+            end
+        end)
+    end
+
+    function Window:AddMiniWindow(Idx, Info)
+        if typeof(Idx) == "table" then
+            Info = Idx
+            Idx = Info.Name or Info.Title or Info.title
+        end
+        Info = typeof(Info) == "table" and Info or {}
+
+        if Window.MiniWindows[Idx] then
+            Window.MiniWindows[Idx]:Destroy()
+        end
+
+        -- both "Title" and "title" are accepted
+        local Title = Info.Title or Info.title or tostring(Idx)
+        local Description = Info.Description or Info.description
+        local Size = ToUDim2(Info.Size or Info.size, UDim2.fromOffset(320, 280))
+        local MinSize = Info.MinSize or Info.minSize or Vector2.new(200, 120)
+        local Resizable = if Info.Resizable ~= nil then Info.Resizable else (if Info.resizable ~= nil then Info.resizable else true)
+        local Draggable = if Info.Draggable ~= nil then Info.Draggable else (if Info.draggable ~= nil then Info.draggable else true)
+        local OpenOnLogo = if Info.OpenOnLogo ~= nil then Info.OpenOnLogo else true
+        local ShowCloseButton = if Info.Closable ~= nil then Info.Closable else true
+
+        local HasDescription = typeof(Description) == "string" and Description ~= ""
+        local TopHeight = HasDescription and 50 or 36
+
+        local MiniFrame = New("TextButton", {
+            BackgroundColor3 = "BackgroundColor",
+            AutoButtonColor = false,
+            Text = "",
+            Name = "MiniWindow_" .. tostring(Idx),
+            Size = Size,
+            Visible = false,
+            ZIndex = 300,
+            Parent = ScreenGui,
+        })
+        table.insert(Library.Scales, New("UIScale", { Parent = MiniFrame }))
+        table.insert(
+            Library.Corners,
+            New("UICorner", {
+                CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                Parent = MiniFrame,
+            })
+        )
+        Library:AddOutline(MiniFrame)
+
+        -- default position: center of the screen unless Position is given
+        local ViewSize = ScreenGui.AbsoluteSize
+        if Info.Position or Info.position then
+            MiniFrame.Position = ToUDim2(Info.Position or Info.position, UDim2.fromOffset(40, 40))
+        else
+            local Count = 0
+            for _ in Window.MiniWindows do
+                Count += 1
+            end
+            MiniFrame.Position = UDim2.fromOffset(
+                math.max(0, (ViewSize.X - Size.X.Offset) / 2) + Count * 24,
+                math.max(0, (ViewSize.Y - Size.Y.Offset) / 2) + Count * 24
+            )
+        end
+
+        --// Top bar \\--
+        local MiniTopBar = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, TopHeight),
+            Parent = MiniFrame,
+        })
+
+        local MiniTitle = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(12, HasDescription and 6 or 0),
+            Size = UDim2.new(1, -48, 0, HasDescription and 20 or TopHeight),
+            Text = Title,
+            TextSize = 18,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = MiniTopBar,
+        })
+
+        local MiniDescription = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(12, 26),
+            Size = UDim2.new(1, -48, 0, 18),
+            Text = HasDescription and Description or "",
+            TextSize = 13,
+            TextTransparency = 0.35,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Visible = HasDescription,
+            Parent = MiniTopBar,
+        })
+
+        local MiniLine = New("Frame", {
+            BackgroundColor3 = "OutlineColor",
+            BorderSizePixel = 0,
+            Position = UDim2.fromOffset(0, TopHeight),
+            Size = UDim2.new(1, 0, 0, 1),
+            Parent = MiniFrame,
+        })
+
+        local CloseButton
+        if ShowCloseButton then
+            CloseButton = New("TextButton", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                BackgroundTransparency = 1,
+                Position = UDim2.new(1, -8, 0, TopHeight / 2),
+                Size = UDim2.fromOffset(22, 22),
+                Text = "",
+                Parent = MiniTopBar,
+            })
+            local CloseIcon = New("ImageLabel", {
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                BackgroundTransparency = 1,
+                ImageColor3 = "FontColor",
+                ImageTransparency = 0.4,
+                Position = UDim2.fromScale(0.5, 0.5),
+                Size = UDim2.fromOffset(16, 16),
+                Parent = CloseButton,
+            })
+            local ParsedClose = Library:GetCustomIcon("x")
+            if ParsedClose then
+                Library:ApplyLucideIcon(CloseIcon, ParsedClose)
+            end
+
+            CloseButton.MouseEnter:Connect(function()
+                TweenService:Create(CloseIcon, Library.TweenInfo, { ImageTransparency = 0 }):Play()
+            end)
+            CloseButton.MouseLeave:Connect(function()
+                TweenService:Create(CloseIcon, Library.TweenInfo, { ImageTransparency = 0.4 }):Play()
+            end)
+        end
+
+        --// Content (elements are added here) \\--
+        local MiniContent = New("ScrollingFrame", {
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1,
+            CanvasSize = UDim2.fromScale(0, 0),
+            Position = UDim2.fromOffset(0, TopHeight + 1),
+            ScrollBarImageTransparency = 0.5,
+            ScrollBarThickness = 3,
+            Size = UDim2.new(1, 0, 1, -(TopHeight + 1)),
+            Parent = MiniFrame,
+        })
+        New("UIListLayout", {
+            Padding = UDim.new(0, 8),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = MiniContent,
+        })
+        New("UIPadding", {
+            PaddingBottom = UDim.new(0, 14),
+            PaddingLeft = UDim.new(0, 10),
+            PaddingRight = UDim.new(0, 10),
+            PaddingTop = UDim.new(0, 8),
+            Parent = MiniContent,
+        })
+
+        --// Mini window object \\--
+        local Mini = {
+            Name = Idx,
+            Type = "MiniWindow",
+            Destroyed = false,
+            Open = false,
+            OpenOnLogo = OpenOnLogo,
+            Elements = {},
+            DependencyBoxes = {},
+            Connections = {},
+            Container = MiniContent,
+            Frame = MiniFrame,
+        }
+
+        -- the content is a scrolling frame with an automatic canvas, nothing to recalculate
+        function Mini:Resize() end
+
+        function Mini:Sync()
+            MiniFrame.Visible = Mini.Open and Library.Toggled and not Mini.Destroyed
+        end
+
+        function Mini:SetOpen(Value: boolean)
+            Mini.Open = Value == true
+            Mini:Sync()
+        end
+
+        function Mini:Show()
+            Mini:SetOpen(true)
+        end
+
+        function Mini:Hide()
+            Mini:SetOpen(false)
+        end
+
+        function Mini:Toggle()
+            Mini:SetOpen(not Mini.Open)
+        end
+
+        function Mini:SetTitle(Text: string)
+            MiniTitle.Text = Text
+        end
+
+        function Mini:SetDescription(Text: string?)
+            local Has = typeof(Text) == "string" and Text ~= ""
+            MiniDescription.Text = Has and Text or ""
+            MiniDescription.Visible = Has
+        end
+
+        function Mini:SetSize(Value)
+            MiniFrame.Size = ToUDim2(Value, MiniFrame.Size)
+        end
+
+        function Mini:SetPosition(Value)
+            MiniFrame.Position = ToUDim2(Value, MiniFrame.Position)
+        end
+
+        function Mini:Destroy()
+            if Mini.Destroyed then
+                return
+            end
+            Mini.Destroyed = true
+
+            for Index = #Mini.Elements, 1, -1 do
+                local Element = Mini.Elements[Index]
+                if Element and Element.Destroy then
+                    Element:Destroy()
+                end
+            end
+            table.clear(Mini.Elements)
+
+            for _, Connection in Mini.Connections do
+                if typeof(Connection) == "RBXScriptConnection" then
+                    Connection:Disconnect()
+                end
+            end
+
+            MiniFrame:Destroy()
+            if Window.MiniWindows[Idx] == Mini then
+                Window.MiniWindows[Idx] = nil
+            end
+        end
+
+        if CloseButton then
+            CloseButton.MouseButton1Click:Connect(function()
+                Mini:Hide()
+            end)
+        end
+
+        --// Drag \\--
+        if Draggable then
+            Library:MakeDraggable(MiniFrame, MiniTopBar, true, false)
+        end
+
+        --// Resize handle (bottom right corner) \\--
+        if Resizable then
+            local ResizeHandle = New("TextButton", {
+                AnchorPoint = Vector2.new(1, 1),
+                BackgroundTransparency = 1,
+                Position = UDim2.new(1, -4, 1, -4),
+                Size = UDim2.fromOffset(16, 16),
+                Text = "",
+                ZIndex = 310,
+                Parent = MiniFrame,
+            })
+            local ResizeIconLabel = New("ImageLabel", {
+                BackgroundTransparency = 1,
+                ImageColor3 = "FontColor",
+                ImageTransparency = 0.5,
+                Size = UDim2.fromScale(1, 1),
+                ZIndex = 310,
+                Parent = ResizeHandle,
+            })
+            local ParsedResize = Library:GetCustomIcon("move-diagonal-2") or Library:GetCustomIcon("maximize-2")
+            if ParsedResize then
+                Library:ApplyLucideIcon(ResizeIconLabel, ParsedResize)
+            end
+
+            local Resizing = false
+            local StartPos, StartSize
+
+            Library:GiveSignal(ResizeHandle.InputBegan:Connect(function(Input)
+                if not IsClickInput(Input) then
+                    return
+                end
+                Resizing = true
+                StartPos = Input.Position
+                StartSize = MiniFrame.AbsoluteSize / Library.DPIScale
+
+                local Ended
+                Ended = Input.Changed:Connect(function()
+                    if Input.UserInputState == Enum.UserInputState.End then
+                        Resizing = false
+                        Ended:Disconnect()
+                    end
+                end)
+            end))
+
+            Library:GiveSignal(UserInputService.InputChanged:Connect(function(Input)
+                if not Resizing or not IsHoverInput(Input) then
+                    return
+                end
+                if not (MiniFrame and MiniFrame.Parent) then
+                    Resizing = false
+                    return
+                end
+
+                local Delta = (Input.Position - StartPos) / Library.DPIScale
+                MiniFrame.Size = UDim2.fromOffset(
+                    math.max(MinSize.X, StartSize.X + Delta.X),
+                    math.max(MinSize.Y, StartSize.Y + Delta.Y)
+                )
+            end))
+        end
+
+        setmetatable(Mini, BaseGroupbox)
+
+        Window.MiniWindows[Idx] = Mini
+        SetupMiniWindowLogo()
+
+        if Info.Open == true or Info.Visible == true then
+            Mini:Show()
+        end
+
+        return Mini
+    end
+
+    -- mini windows follow the main window visibility (RightShift etc.)
+    do
+        local OriginalWindowToggle = Window.Toggle
+        function Window:Toggle(Value)
+            task.defer(function()
+                for _, Mini in Window.MiniWindows do
+                    Mini:Sync()
+                end
+            end)
+            return OriginalWindowToggle(self, Value)
+        end
+    end
+
     if WindowInfo.EnableSidebarResize then
         local Threshold = (WindowInfo.MinSidebarWidth + WindowInfo.SidebarCompactWidth) * WindowInfo.SidebarCollapseThreshold
         local StartPos, StartWidth
