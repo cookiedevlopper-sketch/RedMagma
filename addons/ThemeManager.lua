@@ -47,7 +47,7 @@ local SchemeIndexes = { "FontColor", "MainColor", "AccentColor", "BackgroundColo
 local ThemeManager = {
     Library = nil,
 
-    Folder = "ObsidianLibSettings",
+    Folder = "RedMagmaLibSettings",
 
     AppliedToTab = false,
     DefaultThemeName = nil,
@@ -1232,5 +1232,5 @@ function ThemeManager:ApplyToGroupbox(Groupbox: any)
     return ThemeManager:CreateThemeManager(Groupbox)
 end
 
-getgenv().ObsidianThemeManager = ThemeManager
+getgenv().RedMagmaThemeManager = ThemeManager
 return ThemeManager
