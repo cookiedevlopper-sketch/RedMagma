@@ -34,7 +34,7 @@ local CustomImageManager = {}
 local CustomImageManagerAssets = {
     TransparencyTexture = {
         RobloxId = 139785960036434,
-        Path = "Obsidian/assets/TransparencyTexture.png",
+        Path = "RedMagma/assets/TransparencyTexture.png",
         URL = BaseURL .. "assets/TransparencyTexture.png",
 
         Id = nil,
@@ -42,7 +42,7 @@ local CustomImageManagerAssets = {
 
     SaturationMap = {
         RobloxId = 4155801252,
-        Path = "Obsidian/assets/SaturationMap.png",
+        Path = "RedMagma/assets/SaturationMap.png",
         URL = BaseURL .. "assets/SaturationMap.png",
 
         Id = nil,
@@ -50,7 +50,7 @@ local CustomImageManagerAssets = {
 
     LoadingIcon = {
         RobloxId = 97544096941083,
-        Path = "Obsidian/assets/LoadingIcon.png",
+        Path = "RedMagma/assets/LoadingIcon.png",
         URL = BaseURL .. "assets/LoadingIcon.png",
 
         Id = nil,
@@ -58,7 +58,7 @@ local CustomImageManagerAssets = {
 
     CheckIcon = {
         RobloxId = 97682394690683,
-        Path = "Obsidian/assets/CheckIcon.png",
+        Path = "RedMagma/assets/CheckIcon.png",
         URL = BaseURL .. "assets/CheckIcon.png",
 
         Id = nil,
@@ -102,7 +102,7 @@ do
 
         CustomImageManagerAssets[AssetName] = {
             RobloxId = RobloxAssetId,
-            Path = string.format("Obsidian/custom_assets/%s", AssetName),
+            Path = string.format("RedMagma/custom_assets/%s", AssetName),
             URL = URL,
 
             Id = nil,
@@ -168,7 +168,7 @@ local Library = {
     DevicePlatform = nil,
     IsMobile = false,
 
-    --// Obsidian Windows \\--
+    --// Red Magma Windows \\--
     ScreenGui = nil,
     Floats = nil,
     Overlay = nil,
@@ -1848,7 +1848,7 @@ local function SetAlwaysOnTop(Gui: ScreenGui, Enabled: boolean)
 end
 
 local ScreenGui = New("ScreenGui", {
-    Name = "Obsidian",
+    Name = "RedMagma",
     DisplayOrder = 998,
     ResetOnSpawn = false,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -2088,37 +2088,37 @@ end
 
 --// DEPRECATED
 function Library:ChangeCursorCrossColor(Color: Color3)
-    warn("Obsidian:ChangeCursorCrossColor is deprecated, please use Obsidian.Cursor:ChangeCrossColor instead.")
+    warn("Red Magma:ChangeCursorCrossColor is deprecated, please use Red Magma.Cursor:ChangeCrossColor instead.")
     Library.Cursor:ChangeCrossColor(Color)
 end
 
 --// DEPRECATED
 function Library:ResetCursorCross()
-    warn("Obsidian:ResetCursorCross is deprecated, please use Obsidian.Cursor:ResetCross instead.")
+    warn("Red Magma:ResetCursorCross is deprecated, please use Red Magma.Cursor:ResetCross instead.")
     Library.Cursor:ResetCross()
 end
 
 --// DEPRECATED
 function Library:ChangeCursorIcon(ImageId: string)
-    warn("Obsidian:ChangeCursorIcon is deprecated, please use Obsidian.Cursor:ChangeIcon instead.")
+    warn("Red Magma:ChangeCursorIcon is deprecated, please use Red Magma.Cursor:ChangeIcon instead.")
     Library.Cursor:ChangeIcon(ImageId)
 end
 
 --// DEPRECATED
 function Library:ChangeCursorIconColor(Color: Color3)
-    warn("Obsidian:ChangeCursorIconColor is deprecated, please use Obsidian.Cursor:ChangeIconColor instead.")
+    warn("Red Magma:ChangeCursorIconColor is deprecated, please use Red Magma.Cursor:ChangeIconColor instead.")
     Library.Cursor:ChangeIconColor(Color)
 end
 
 --// DEPRECATED
 function Library:ChangeCursorIconSize(Size: UDim2)
-    warn("Obsidian:ChangeCursorIconSize is deprecated, please use Obsidian.Cursor:ChangeIconSize instead.")
+    warn("Red Magma:ChangeCursorIconSize is deprecated, please use Red Magma.Cursor:ChangeIconSize instead.")
     Library.Cursor:ChangeIconSize(Size)
 end
 
 --// DEPRECATED
 function Library:ResetCursorIcon()
-    warn("Obsidian:ResetCursorIcon is deprecated, please use Obsidian.Cursor:ResetIcon instead.")
+    warn("Red Magma:ResetCursorIcon is deprecated, please use Red Magma.Cursor:ResetIcon instead.")
     Library.Cursor:ResetIcon()
 end
 
@@ -3254,7 +3254,7 @@ end
 
 --// Deprecated \\--
 function Library:MakeOutline(Frame: GuiObject, Corner: number?, ZIndex: number?)
-    warn("Obsidian:MakeOutline is deprecated, please use Obsidian:AddOutline instead.")
+    warn("Red Magma:MakeOutline is deprecated, please use Red Magma:AddOutline instead.")
     local Holder = New("Frame", {
         BackgroundColor3 = "DarkColor",
         Position = UDim2.fromOffset(-2, -2),
@@ -15518,7 +15518,7 @@ function Library:CreateLoading(LoadingInfo)
 
     --// ScreenGui \\--
     local ScreenGui = New("ScreenGui", {
-        Name = "ObsidianLoading",
+        Name = "RedMagmaLoading",
         DisplayOrder = 999,
         ResetOnSpawn = false
     })
