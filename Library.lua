@@ -14926,6 +14926,190 @@ function Library:CreateWindow(WindowInfo)
         end
     end
 
+    --// Window Music \\--
+    -- Music = 1234567890                       (Roblox asset ID)
+    -- Music = "rbxassetid://1234567890"        (Roblox asset string)
+    -- Music = "https://example.com/song.mp3"   (direct link, needs writefile + getcustomasset)
+    -- Music = { Id = ..., Volume = 0.5, Loop = true, Autoplay = true }
+    -- Also: MusicVolume, MusicLoop, MusicAutoplay
+    -- Window:SetMusic(Source) / PlayMusic() / PauseMusic() / StopMusic() / SetMusicVolume(Value) / SetMusicLooped(Bool)
+    do
+        local SoundService = game:GetService("SoundService")
+
+        local MusicInfo = WindowInfo.Music
+        local MusicConfig = typeof(MusicInfo) == "table" and MusicInfo or {}
+
+        local function FirstNotNil(...)
+            for Index = 1, select("#", ...) do
+                local Value = select(Index, ...)
+                if Value ~= nil then
+                    return Value
+                end
+            end
+            return nil
+        end
+
+        local MusicSound = Instance.new("Sound")
+        MusicSound.Name = "RedMagmaMusic"
+        MusicSound.Volume = math.clamp(tonumber(FirstNotNil(MusicConfig.Volume, WindowInfo.MusicVolume)) or 0.5, 0, 10)
+        MusicSound.Looped = FirstNotNil(MusicConfig.Loop, WindowInfo.MusicLoop) ~= false
+        MusicSound.Parent = SoundService
+
+        local AutoplayMusic = FirstNotNil(MusicConfig.Autoplay, WindowInfo.MusicAutoplay) ~= false
+        local MusicRequest = 0 -- invalidates downloads that finish after a newer SetMusic call
+
+        local function Hash(Text: string): string
+            local Value = 5381
+            for Index = 1, #Text do
+                Value = (Value * 33 + string.byte(Text, Index)) % 4294967296
+            end
+            return string.format("%08x", Value)
+        end
+
+        -- Returns (SoundId, RemoteUrl). Only one of them is set.
+        local function ResolveSource(Source: any): (string?, string?)
+            if typeof(Source) == "number" then
+                return "rbxassetid://" .. tostring(math.floor(Source)), nil
+            end
+            if typeof(Source) ~= "string" then
+                return nil, nil
+            end
+
+            Source = Source:match("^%s*(.-)%s*$")
+            if Source == "" then
+                return nil, nil
+            end
+
+            if Source:match("^%d+$") then
+                return "rbxassetid://" .. Source, nil
+            end
+            if Source:match("^rbxassetid://") or Source:match("^rbxasset://") or Source:match("^rbxthumb://") then
+                return Source, nil
+            end
+
+            if Source:find("roblox.com", 1, true) then
+                local RobloxId = Source:match("library/(%d+)") or Source:match("[?&]id=(%d+)") or Source:match("/(%d+)")
+                if RobloxId then
+                    return "rbxassetid://" .. RobloxId, nil
+                end
+            end
+
+            if Source:match("^https?://") then
+                return nil, Source
+            end
+
+            return nil, nil
+        end
+
+        local function DownloadSource(Url: string): string?
+            local GetAsset = getcustomasset or getsynasset
+            if typeof(writefile) ~= "function" or typeof(isfile) ~= "function" or typeof(GetAsset) ~= "function" then
+                warn("[Red Magma] Music: links need writefile, isfile and getcustomasset (use a Roblox asset ID instead).")
+                return nil
+            end
+
+            if typeof(makefolder) == "function" and typeof(isfolder) == "function" then
+                if not isfolder("RedMagma") then
+                    makefolder("RedMagma")
+                end
+                if not isfolder("RedMagma/music") then
+                    makefolder("RedMagma/music")
+                end
+            end
+
+            local Path = "RedMagma/music/" .. Hash(Url) .. ".mp3"
+            if not isfile(Path) then
+                local Success, Body = pcall(function()
+                    return game:HttpGet(Url)
+                end)
+                if not Success or typeof(Body) ~= "string" or #Body == 0 then
+                    warn("[Red Magma] Music: could not download " .. Url)
+                    return nil
+                end
+                writefile(Path, Body)
+            end
+
+            local Success, Asset = pcall(GetAsset, Path)
+            if not Success or not Asset then
+                warn("[Red Magma] Music: getcustomasset failed for " .. Path)
+                return nil
+            end
+            return Asset
+        end
+
+        function Window:SetMusic(Source: any, Autoplay: boolean?)
+            MusicRequest += 1
+            local Request = MusicRequest
+
+            MusicSound:Stop()
+            if Source == nil or Source == false then
+                MusicSound.SoundId = ""
+                return
+            end
+
+            local SoundId, Url = ResolveSource(Source)
+            local function Apply(Id: string)
+                if Request ~= MusicRequest or Library.Unloaded then
+                    return
+                end
+                MusicSound.SoundId = Id
+                if Autoplay ~= false then
+                    MusicSound:Play()
+                end
+            end
+
+            if SoundId then
+                Apply(SoundId)
+            elseif Url then
+                task.spawn(function()
+                    local Id = DownloadSource(Url)
+                    if Id then
+                        Apply(Id)
+                    end
+                end)
+            else
+                warn("[Red Magma] Music: unsupported source, use a Roblox ID or an http(s) link.")
+            end
+        end
+
+        function Window:PlayMusic()
+            if MusicSound.SoundId ~= "" then
+                MusicSound:Play()
+            end
+        end
+
+        function Window:PauseMusic()
+            MusicSound:Pause()
+        end
+
+        function Window:StopMusic()
+            MusicSound:Stop()
+        end
+
+        function Window:SetMusicVolume(Value: number)
+            MusicSound.Volume = math.clamp(tonumber(Value) or MusicSound.Volume, 0, 10)
+        end
+
+        function Window:SetMusicLooped(Value: boolean)
+            MusicSound.Looped = Value == true
+        end
+
+        Window.MusicSound = MusicSound
+
+        Library:OnUnload(function()
+            MusicRequest += 1
+            MusicSound:Destroy()
+        end)
+
+        local StartSource = MusicInfo
+        if typeof(MusicInfo) == "table" then
+            StartSource = FirstNotNil(MusicConfig.Id, MusicConfig.Source, MusicConfig.Url, MusicConfig.URL, MusicConfig.Link)
+        end
+        if StartSource ~= nil then
+            Window:SetMusic(StartSource, AutoplayMusic)
+        end
+    end
+
     --// Mini Windows \\--
     -- Window:AddMiniWindow(Idx, { Title = "...", Description = nil, Size = Vector2.new(320, 280), ... })
     -- Small floating windows opened by clicking the window logo. They can be dragged, resized,
