@@ -10817,6 +10817,23 @@ function Library:Notify(...)
     end
     Data.Destroyed = false
 
+    -- Notification History: every notification is kept (newest last) for the bell button of the window
+    do
+        Library.NotificationHistory = Library.NotificationHistory or {}
+        local HistoryTitle = (typeof(Info) == "table" and Info.Title ~= nil) and tostring(Info.Title) or "Notification"
+        table.insert(Library.NotificationHistory, {
+            Time = os.date("%H:%M:%S"),
+            Title = HistoryTitle,
+            Description = Data.Description or "",
+        })
+        while #Library.NotificationHistory > 200 do
+            table.remove(Library.NotificationHistory, 1)
+        end
+        for _, Listener in ipairs(Library.NotificationHistoryListeners or {}) do
+            task.spawn(Listener)
+        end
+    end
+
     local DeletedInstance = false
     local DeleteConnection = nil
     if typeof(Data.Time) == "Instance" then
@@ -11821,6 +11838,288 @@ function Library:CreateWindow(WindowInfo)
                 Parent = TopBar,
             })
             Library:ApplyLucideIcon(MoveIconImage, MoveIcon)
+        end
+
+        --// Notification History (bell button next to the search bar) \\--
+        if not WindowInfo.DisableNotificationHistory then
+            local BellIcon = Library:GetIcon("bell")
+            local CopyIconData = Library:GetIcon("copy")
+            local CloseIconData = Library:GetIcon("x")
+
+            local BellButton = New("TextButton", {
+                BackgroundTransparency = 1,
+                Size = UDim2.fromOffset(28, 28),
+                Text = "",
+                Parent = RightWrapper,
+            })
+            if BellIcon then
+                local BellImage = New("ImageLabel", {
+                    AnchorPoint = Vector2.new(0.5, 0.5),
+                    ImageColor3 = "FontColor",
+                    ImageTransparency = 0.4,
+                    Position = UDim2.fromScale(0.5, 0.5),
+                    Size = UDim2.fromOffset(18, 18),
+                    Parent = BellButton,
+                })
+                Library:ApplyLucideIcon(BellImage, BellIcon)
+            else
+                BellButton.Text = "N"
+            end
+
+            local Panel = New("Frame", {
+                AnchorPoint = Vector2.new(1, 0),
+                BackgroundColor3 = "BackgroundColor",
+                Position = UDim2.new(1, -52, 0, 52),
+                Size = UDim2.fromOffset(330, 380),
+                Visible = false,
+                ZIndex = 100,
+                Parent = MainFrame,
+            })
+            table.insert(
+                Library.Corners,
+                New("UICorner", {
+                    CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                    Parent = Panel,
+                })
+            )
+            New("UIStroke", {
+                Color = "OutlineColor",
+                Parent = Panel,
+            })
+
+            local HistorySearch = New("TextBox", {
+                BackgroundColor3 = "MainColor",
+                ClearTextOnFocus = false,
+                PlaceholderText = "Search notification history...",
+                Position = UDim2.fromOffset(8, 8),
+                Size = UDim2.new(1, -16, 0, 30),
+                Text = "",
+                TextSize = 14,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 101,
+                Parent = Panel,
+            })
+            table.insert(
+                Library.Corners,
+                New("UICorner", {
+                    CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                    Parent = HistorySearch,
+                })
+            )
+            New("UIPadding", {
+                PaddingLeft = UDim.new(0, 8),
+                PaddingRight = UDim.new(0, 8),
+                Parent = HistorySearch,
+            })
+            New("UIStroke", {
+                Color = "OutlineColor",
+                Parent = HistorySearch,
+            })
+
+            New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(12, 46),
+                Size = UDim2.new(1, -50, 0, 22),
+                Text = "Notification History",
+                TextSize = 15,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 101,
+                Parent = Panel,
+            })
+
+            local CloseButton = New("TextButton", {
+                AnchorPoint = Vector2.new(1, 0),
+                BackgroundTransparency = 1,
+                Position = UDim2.new(1, -10, 0, 46),
+                Size = UDim2.fromOffset(22, 22),
+                Text = "",
+                ZIndex = 101,
+                Parent = Panel,
+            })
+            if CloseIconData then
+                local CloseImage = New("ImageLabel", {
+                    AnchorPoint = Vector2.new(0.5, 0.5),
+                    ImageColor3 = "FontColor",
+                    ImageTransparency = 0.4,
+                    Position = UDim2.fromScale(0.5, 0.5),
+                    Size = UDim2.fromOffset(14, 14),
+                    ZIndex = 102,
+                    Parent = CloseButton,
+                })
+                Library:ApplyLucideIcon(CloseImage, CloseIconData)
+            else
+                CloseButton.Text = "x"
+            end
+
+            Library:MakeLine(Panel, {
+                Position = UDim2.fromOffset(0, 74),
+                Size = UDim2.new(1, 0, 0, 1),
+                ZIndex = 101,
+            })
+
+            local HistoryList = New("ScrollingFrame", {
+                AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                CanvasSize = UDim2.fromOffset(0, 0),
+                Position = UDim2.fromOffset(8, 82),
+                ScrollBarImageColor3 = "OutlineColor",
+                ScrollBarThickness = 2,
+                Size = UDim2.new(1, -16, 1, -90),
+                ZIndex = 101,
+                Parent = Panel,
+            })
+            New("UIListLayout", {
+                Padding = UDim.new(0, 6),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                Parent = HistoryList,
+            })
+
+            local function Rebuild()
+                for _, Child in ipairs(HistoryList:GetChildren()) do
+                    if Child:IsA("GuiObject") then
+                        Child:Destroy()
+                    end
+                end
+
+                local Query = HistorySearch.Text:lower()
+                local Shown = 0
+                local History = Library.NotificationHistory or {}
+                for Index = #History, 1, -1 do
+                    local Entry = History[Index]
+                    local Haystack = (Entry.Time .. " " .. Entry.Title .. " " .. Entry.Description):lower()
+                    if Query == "" or Haystack:find(Query, 1, true) then
+                        Shown += 1
+                        if Shown > 100 then
+                            break
+                        end
+
+                        local Card = New("Frame", {
+                            AutomaticSize = Enum.AutomaticSize.Y,
+                            BackgroundColor3 = "MainColor",
+                            LayoutOrder = Shown,
+                            Size = UDim2.new(1, -4, 0, 0),
+                            ZIndex = 101,
+                            Parent = HistoryList,
+                        })
+                        table.insert(
+                            Library.Corners,
+                            New("UICorner", {
+                                CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                                Parent = Card,
+                            })
+                        )
+                        New("UIStroke", {
+                            Color = "OutlineColor",
+                            Parent = Card,
+                        })
+                        New("UIPadding", {
+                            PaddingBottom = UDim.new(0, 8),
+                            PaddingLeft = UDim.new(0, 10),
+                            PaddingRight = UDim.new(0, 26),
+                            PaddingTop = UDim.new(0, 8),
+                            Parent = Card,
+                        })
+                        local Content = New("Frame", {
+                            AutomaticSize = Enum.AutomaticSize.Y,
+                            BackgroundTransparency = 1,
+                            Size = UDim2.fromScale(1, 0),
+                            ZIndex = 102,
+                            Parent = Card,
+                        })
+                        New("UIListLayout", {
+                            Padding = UDim.new(0, 2),
+                            SortOrder = Enum.SortOrder.LayoutOrder,
+                            Parent = Content,
+                        })
+
+                        New("TextLabel", {
+                            AutomaticSize = Enum.AutomaticSize.Y,
+                            BackgroundTransparency = 1,
+                            LayoutOrder = 1,
+                            Size = UDim2.new(1, 0, 0, 0),
+                            Text = "[" .. Entry.Time .. "]",
+                            TextSize = 13,
+                            TextTransparency = 0.4,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            ZIndex = 102,
+                            Parent = Content,
+                        })
+                        New("TextLabel", {
+                            AutomaticSize = Enum.AutomaticSize.Y,
+                            BackgroundTransparency = 1,
+                            LayoutOrder = 2,
+                            Size = UDim2.new(1, 0, 0, 0),
+                            Text = Entry.Title,
+                            TextSize = 15,
+                            TextWrapped = true,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            ZIndex = 102,
+                            Parent = Content,
+                        })
+                        New("TextLabel", {
+                            AutomaticSize = Enum.AutomaticSize.Y,
+                            BackgroundTransparency = 1,
+                            LayoutOrder = 3,
+                            Size = UDim2.new(1, 0, 0, 0),
+                            Text = Entry.Description,
+                            TextSize = 14,
+                            TextWrapped = true,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                            ZIndex = 102,
+                            Parent = Content,
+                        })
+
+                        local CopyButton = New("TextButton", {
+                            AnchorPoint = Vector2.new(1, 0),
+                            BackgroundTransparency = 1,
+                            Position = UDim2.new(1, 20, 0, 0),
+                            Size = UDim2.fromOffset(18, 18),
+                            Text = "",
+                            ZIndex = 103,
+                            Parent = Card,
+                        })
+                        if CopyIconData then
+                            local CopyImage = New("ImageLabel", {
+                                AnchorPoint = Vector2.new(0.5, 0.5),
+                                ImageColor3 = "FontColor",
+                                ImageTransparency = 0.4,
+                                Position = UDim2.fromScale(0.5, 0.5),
+                                Size = UDim2.fromOffset(13, 13),
+                                ZIndex = 104,
+                                Parent = CopyButton,
+                            })
+                            Library:ApplyLucideIcon(CopyImage, CopyIconData)
+                        else
+                            CopyButton.Text = "c"
+                        end
+                        CopyButton.MouseButton1Click:Connect(function()
+                            if setclipboard then
+                                pcall(setclipboard, Entry.Title .. "\n" .. Entry.Description)
+                            end
+                        end)
+                    end
+                end
+            end
+
+            Library:GiveSignal(HistorySearch:GetPropertyChangedSignal("Text"):Connect(Rebuild))
+            Library:GiveSignal(BellButton.MouseButton1Click:Connect(function()
+                Panel.Visible = not Panel.Visible
+                if Panel.Visible then
+                    Rebuild()
+                end
+            end))
+            Library:GiveSignal(CloseButton.MouseButton1Click:Connect(function()
+                Panel.Visible = false
+            end))
+
+            -- a new notification refreshes the list while the panel is open
+            Library.NotificationHistoryListeners = Library.NotificationHistoryListeners or {}
+            table.insert(Library.NotificationHistoryListeners, function()
+                if Panel.Parent and Panel.Visible then
+                    Rebuild()
+                end
+            end)
         end
 
         --// Bottom Bar \\--
