@@ -36,7 +36,20 @@ local SaveManager = {
     Folder = "ObsidianLibSettings",
     SubFolder = "",
 
-    Ignore = {},
+    Ignore = {
+        --// Theme settings belong to the ThemeManager (it saves them by itself), never to a config
+        BackgroundColor = true,
+        MainColor = true,
+        AccentColor = true,
+        OutlineColor = true,
+        FontColor = true,
+        FontFace = true,
+        BackgroundImage = true,
+        ThemeManager_ThemeList = true,
+        ThemeManager_CustomThemeList = true,
+        ThemeManager_CustomThemeName = true,
+        ThemeManager_ThemeJSON = true,
+    },
     LoadingOrder = {},
     UseLoadingOrder = false,
 
