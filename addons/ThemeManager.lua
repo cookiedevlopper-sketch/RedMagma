@@ -772,6 +772,7 @@ end
 --// Autosave: the current colours are saved automatically (no need to press "Set as default")
 local AutosaveLoading = false
 local AutosaveToken = 0
+local AutosavePending = false
 
 local function GetAutosavePath(): false | string
     local CurrentThemesPath = GetCurrentThemesPath()
@@ -791,19 +792,35 @@ function ThemeManager:Autosave()
     --// Debounce: wait until the colour picker stops moving
     AutosaveToken += 1
     local Token = AutosaveToken
-    task.delay(0.6, function()
+    AutosavePending = true
+    task.delay(0.3, function()
         if Token ~= AutosaveToken then
             return
         end
 
-        local EncodedData, Success = ThemeManager:SaveJSON()
-        if not Success then
-            return
-        end
-
-        ThemeManager:CheckFolderTree()
-        pcall(writefile, AutosavePath, EncodedData)
+        ThemeManager:FlushAutosave()
     end)
+end
+
+--// Writes the current theme right now (also used when the UI is unloaded, so nothing is lost)
+function ThemeManager:FlushAutosave()
+    if not AutosavePending then
+        return
+    end
+
+    local AutosavePath = GetAutosavePath()
+    if AutosavePath == false or not ThemeManager.Library or not ThemeManager.Library.Options.FontFace then
+        return
+    end
+
+    local EncodedData, Success = ThemeManager:SaveJSON()
+    if not Success then
+        return
+    end
+
+    AutosavePending = false
+    ThemeManager:CheckFolderTree()
+    pcall(writefile, AutosavePath, EncodedData)
 end
 
 function ThemeManager:LoadAutosave(): boolean
@@ -921,6 +938,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     Themesbox:AddButton("Set as default", function()
         local ThemeName = ThemeList.Value
         ThemeManager:SaveDefault(ThemeName)
+        ThemeManager:Autosave()
 
         ThemeManager.Library:Notify(string.format("Successfully set default theme to %q", ThemeName))
         RefreshDefaultThemeLabel()
@@ -1201,13 +1219,18 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     FontFace:OnChanged(function(Value) ThemeManager.Library:SetFont(Enum.Font[Value]); ThemeManager:Autosave() end)
     BackgroundImage:OnChanged(function(Value) ThemeManager.Library:SetBackgroundImage(Value); ThemeManager:Autosave() end)
 
-    --// Load default (if a default theme is set it wins, otherwise the last colours you used)
-    local _DefaultName, HasDefaultTheme = ThemeManager:GetDefaultTheme()
-    if HasDefaultTheme then
-        ThemeManager:LoadDefault()
-    else
-        ThemeManager:LoadAutosave()
+    --// Load the theme: the last colours you used win, the default theme is only used when nothing was saved yet
+    if not ThemeManager:LoadAutosave() then
+        local _DefaultName, HasDefaultTheme = ThemeManager:GetDefaultTheme()
+        if HasDefaultTheme then
+            ThemeManager:LoadDefault()
+        end
     end
+
+    --// Save what is pending when the UI is unloaded
+    ThemeManager.Library:OnUnload(function()
+        ThemeManager:FlushAutosave()
+    end)
     ThemeManager:UpdateContrastWarning()
     ThemeManager.AppliedToTab = true
     RefreshDefaultThemeLabel()
